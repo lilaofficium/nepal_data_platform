@@ -1,0 +1,28 @@
+python -m ensurepip --upgrade
+
+python -m venv .venv
+
+.venv\Scripts\Activate.ps1
+
+pip install pymongo
+
+
+pip install scrapy 
+
+scrapy startproject scrapers
+
+ cd Nepaldatascraper
+
+
+scrapy genspider books books.toscrape.com
+ 
+scrapy crawl books
+
+-- for env 
+pip install python-dotenv 
+
+pip install beautifulsoup4
+
+pip install loguru 
+
+scrapy.cfg
