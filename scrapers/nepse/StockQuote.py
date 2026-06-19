@@ -1,86 +1,107 @@
 import requests
 from bs4 import BeautifulSoup 
-import time
+import re
+from scrapers.common.mongo_client import save_many
 
 BASE_URL = "https://merolagani.com/StockQuote.aspx"
 
-HEADERS = {
-    "User-Agent": "Mozilla/5.0",
-    "Content-Type": "application/x-www-form-urlencoded",
-    "Referer": BASE_URL,
-}
+session = requests.Session()
+session.headers.update({
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                  "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36"
+}) 
 
-def get_hidden_fields(soup):
-    """Extract ASP.NET hidden fields needed for postback."""
+def fetch_page(url):
+    return session.get(url)
+ 
+def extract_hidden_fields(soup): 
     fields = {}
-    for hidden in soup.find_all("input", type="hidden"):
-        name = hidden.get("name")
-        value = hidden.get("value", "")
+    for inp in soup.find_all("input", type="hidden"):
+        name = inp.get("name")
         if name:
-            fields[name] = value
+            fields[name] = inp.get("value", "")
     return fields
 
-def parse_table(soup):
-    """Parse the stock data table into a list of dicts."""
-    table = soup.find("div", id="ctl00_ContentPlaceHolder1_divData")
-    if not table:
-        return []
-    rows = []
-    for tr in table.find_all("tr")[1:]:  # skip header
-        cols = [td.get_text(strip=True) for td in tr.find_all("td")]
-        if len(cols) >= 8:
-            rows.append({
-                "#": cols[0],
-                "Symbol": cols[1],
-                "LTP": cols[2],
-                "% Change": cols[3],
-                "High": cols[4],
-                "Low": cols[5],
-                "Open": cols[6],
-                "Qty": cols[7],
-                "Turnover": cols[8] if len(cols) > 8 else "",
-            })
-    return rows
 
-def scrape_all_pages():
-    session = requests.Session()
-    all_data = []
+def change_page_index(page_number, soup):  
+    form_data = extract_hidden_fields(soup) 
+    form_data["ctl00$ContentPlaceHolder1$PagerControl1$hdnCurrentPage"] = str(page_number) 
+    btn = soup.find(id="ctl00_ContentPlaceHolder1_PagerControl1_btnPaging")
+    btn_name = btn.get("name") if btn else "ctl00$ContentPlaceHolder1$PagerControl1$btnPaging"
+    form_data[btn_name] = btn.get("value", "Paging") if btn else "Paging" 
+    form_data.setdefault("__EVENTTARGET", "")
+    form_data.setdefault("__EVENTARGUMENT", "") 
+    resp = session.post(BASE_URL, data=form_data)
+    return resp 
 
-    # --- Page 1: GET request ---
-    resp = session.get(BASE_URL, headers=HEADERS)
-    soup = BeautifulSoup(resp.text, "html.parser")
+def SharePrice():
+    resp = fetch_page(BASE_URL)
+    soup = BeautifulSoup(resp.text, "lxml")
+    span = soup.find("span", id="ctl00_ContentPlaceHolder1_PagerControl1_litRecords")
+    if not span:
+        return None
+    all_data = [] 
+    text = span.get_text(strip=True)
+    pages = int(re.search(r'Total pages:\s*(\d+)', text).group(1)) 
+    for i in range(1, pages + 1):  
+      page_resp = change_page_index(i, soup)
+      soup_page = BeautifulSoup(page_resp.text, "lxml")  
+      with open(f"page_{i}.html", "w", encoding="utf-8") as f:
+        f.write(page_resp.text) 
+      container = soup_page.find("div", id="ctl00_ContentPlaceHolder1_divData")
+      table = container.find("table")
+      page_rows = table.find("tbody").find_all("tr")
+      for row in page_rows:
+        col=row.find_all("td") 
+        rowobj = {}
+        for column_name, config in Share_Price_COLUMN_CONFIG.items():
+            idx = config["index"]
+            extract_fn = config["extract"]
+            if idx is None: 
+                rowobj[column_name] = extract_fn(row, col)
+            elif idx < len(col): 
+                rowobj[column_name] = extract_fn(col[idx])
+            else: 
+                rowobj[column_name] = "" 
+        all_data.append(rowobj)     
 
-    all_data.extend(parse_table(soup))
-    hidden = get_hidden_fields(soup)
+    save_many("nepse_live_Stock_Quote", all_data)
 
-    # Find total pages
-    # Look for pagination links like "Page 2", "Page 3" etc.
-    pagination = soup.find_all("a", title=lambda t: t and t.startswith("Page "))
-    total_pages = len(pagination) + 1  # +1 for current page
-    print(f"Total pages found: {total_pages}")
- 
-    for page_num in range(2, total_pages + 1):
-        print(f"Scraping page {page_num}...")
- 
-        payload = {
-            **hidden,
-            "__EVENTTARGET": f"ctl00$ContentPlaceHolder1$ASPxGridView1",
-            "__EVENTARGUMENT": f"PBN|{page_num}",   
-        }
 
-        resp = session.post(BASE_URL, data=payload, headers=HEADERS)
-        soup = BeautifulSoup(resp.text, "html.parser")
 
-        rows = parse_table(soup)
-        if not rows:
-            print(f"  No data on page {page_num}, stopping.")
-            break
+Share_Price_COLUMN_CONFIG ={
+"Symbol": {
+        "index": 0,
+        "extract": lambda td: td.find("a").get_text(strip=True) if td.find("a") else td.get_text(strip=True)
+    },
+"LTP": {
+        "index": 1,
+        "extract": lambda td: td.get_text(strip=True)
+    },
+    "% Change": {
+        "index": 2,
+        "extract": lambda td: td.get_text(strip=True)
+    },
+        "High": {
+        "index": 4,
+        "extract": lambda td: td.get_text(strip=True)
+    },     
+    "Low":{
+        "index": 5,
+        "extract": lambda td: td.get_text(strip=True)
+    },
+    "Open": {
+        "index": 5,
+        "extract": lambda td: td.get_text(strip=True)
+    }, 
+    "Qty": {
+        "index": 6,
+        "extract": lambda td: td.get_text(strip=True)
+    } ,
+    
+        "Turnover": {
+        "index": 0,
+         "extract": lambda td: td.get_text(strip=True)
+    }
+} 
 
-        all_data.extend(rows)
-        hidden = get_hidden_fields(soup)  # Update ViewState for next POST
-        time.sleep(1)  # Be polite
-
-    return all_data
-
-data = scrape_all_pages()  
-print("Saved to nepse_stockquote.csv")

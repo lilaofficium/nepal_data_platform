@@ -1,7 +1,7 @@
 from scrapers.common.utils import fetch_page
 from bs4 import BeautifulSoup
 from scrapers.common.mongo_client import save_many
-from StockQuote import get_hidden_fields
+from scrapers.nepse.StockQuote import SharePrice
 
 LIVE_TRADING_COLUMN_CONFIG = {
     "Symbol": {
@@ -97,11 +97,11 @@ LIVE_TURNOVERS_COLUMN_CONFIG ={
 def main():
     resp = fetch_page("https://merolagani.com/LatestMarket.aspx")
     soup = BeautifulSoup(resp.text, "lxml")   
-    LiveTrading(soup)   
-    LiveGainers(soup)
-    LiveLosers(soup)
-    TopTurnovers(soup)
-
+    # LiveTrading(soup)   
+    # LiveGainers(soup)
+    # LiveLosers(soup)
+    # TopTurnovers(soup)
+    SharePrice()
 def LiveTrading(soup):
     container = soup.find("div", id="ctl00_ContentPlaceHolder1_LiveTrading")
     table = container.find("table")  
@@ -232,11 +232,7 @@ def TopTurnovers(soup):
     save_many("nepse_live_turn_overs", all_data)
 
 
-
-
-
-
-
+ 
 
 
 #####################        
