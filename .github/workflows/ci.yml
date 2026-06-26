@@ -1,0 +1,125 @@
+name: Nepal Data Platform CI/CD # Name shown in GitHub → Actions tab
+
+# ── WHEN does this pipeline run? ─────────────────────────────
+on:
+  push:
+    branches:
+      - main # Runs when you push to main branch
+      - develop # Also runs on develop branch
+  pull_request:
+    branches:
+      - main # Runs when someone opens a Pull Request to main
+
+# ── WHAT does the pipeline do? ───────────────────────────────
+jobs:
+  # ── JOB 1: Run tests and check code quality ────────────────
+  test:
+    name: Install & Test
+    runs-on: ubuntu-latest # GitHub provides a free Ubuntu server
+
+    steps:
+      # Step 1: Download your code onto the GitHub server
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # Step 2: Install Python
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11" # Change this if you use a different version
+
+      # Step 3: Cache pip packages so it runs faster next time
+      - name: Cache pip packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+
+      # Step 4: Install your project dependencies
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest flake8   # Test runner + linter (code style checker)
+
+      # Step 5: Check code style (optional but good practice)
+      - name: Lint code with flake8
+        run: |
+          # The line below checks for serious errors only (E9=syntax, F63/F7/F82=logic bugs)
+          # Remove the next line if you don't want style checking
+          flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+        continue-on-error: true # Don't fail the whole pipeline on style issues
+
+      # Step 6: Run your tests
+      # If you don't have tests yet, this step will simply be skipped
+      - name: Run tests
+        run: |
+          if [ -d "tests" ]; then
+            pytest tests/ -v
+          else
+            echo "No tests folder found — skipping tests (add a tests/ folder later!)"
+          fi
+        env:
+          # Make your .env variables available during tests
+          # You'll add these in GitHub → Settings → Secrets (see Step 3 below)
+          MONGO_URI: ${{ secrets.MONGO_URI }}
+          MONGO_DB_NEPSE: ${{ secrets.MONGO_DB_NEPSE }}
+          # POSTGRES_HOST: ${{ secrets.POSTGRES_HOST }}
+          # POSTGRES_DB: ${{ secrets.POSTGRES_DB }}
+          # POSTGRES_USER: ${{ secrets.POSTGRES_USER }}
+          # POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+
+  # ── JOB 2: Run scrapers (only after tests pass, only on main) ──
+  run-scrapers:
+    name: Run Scrapers
+    needs: test # Only runs if the "test" job above passed
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    # ↑ Only runs on pushes to main, NOT on pull requests
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      # Install Chrome for Selenium (your project uses it for scraping)
+      - name: Install Chrome for Selenium
+        uses: browser-actions/setup-chrome@v1
+
+      - name: Run scrapers
+        run: |
+          python run.py
+        env:
+          MONGO_URI: ${{ secrets.MONGO_URI }}
+          POSTGRES_HOST: ${{ secrets.POSTGRES_HOST }}
+          POSTGRES_DB: ${{ secrets.POSTGRES_DB }}
+          POSTGRES_USER: ${{ secrets.POSTGRES_USER }}
+          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+
+  # ── JOB 3 (OPTIONAL): Run on a schedule ────────────────────
+  # Uncomment the section below to also run scrapers every day at 6am UTC
+  # scheduled-scrape:
+  #   name: Daily Scrape
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - uses: actions/setup-python@v5
+  #       with:
+  #         python-version: "3.11"
+  #     - run: pip install -r requirements.txt
+  #     - run: python run.py
+  #       env:
+  #         MONGO_URI: ${{ secrets.MONGO_URI }}
+  #         POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+  # on:
+  #   schedule:
+  #     - cron: "0 6 * * *"   # Every day at 6:00 AM UTC
