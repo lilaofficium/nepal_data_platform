@@ -100,26 +100,9 @@ jobs:
           python run.py
         env:
           MONGO_URI: ${{ secrets.MONGO_URI }}
-          POSTGRES_HOST: ${{ secrets.POSTGRES_HOST }}
-          POSTGRES_DB: ${{ secrets.POSTGRES_DB }}
-          POSTGRES_USER: ${{ secrets.POSTGRES_USER }}
-          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
-
-  # ── JOB 3 (OPTIONAL): Run on a schedule ────────────────────
-  # Uncomment the section below to also run scrapers every day at 6am UTC
-  # scheduled-scrape:
-  #   name: Daily Scrape
-  #   runs-on: ubuntu-latest
-  #   steps:
-  #     - uses: actions/checkout@v4
-  #     - uses: actions/setup-python@v5
-  #       with:
-  #         python-version: "3.11"
-  #     - run: pip install -r requirements.txt
-  #     - run: python run.py
-  #       env:
-  #         MONGO_URI: ${{ secrets.MONGO_URI }}
-  #         POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
-  # on:
-  #   schedule:
-  #     - cron: "0 6 * * *"   # Every day at 6:00 AM UTC
+          MONGO_DB_NEPSE: ${{ secrets.MONGO_DB_NEPSE }}
+          # MONGO_URI: ${{ secrets.MONGO_URI }}
+          # POSTGRES_HOST: ${{ secrets.POSTGRES_HOST }}
+          # POSTGRES_DB: ${{ secrets.POSTGRES_DB }}
+          # POSTGRES_USER: ${{ secrets.POSTGRES_USER }}
+          # POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
